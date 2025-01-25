@@ -10,6 +10,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { formatCurrency, calculatePriceChange } from '@/lib/utils';
 import * as Yup from 'yup';
 
+
 const Header = React.memo(() => (
   <header className="flex items-center justify-between p-4 border-b">
     <a href="/" className="text-2xl font-bold text-primary">PriceTrack</a>
@@ -19,6 +20,11 @@ const Header = React.memo(() => (
     </Button>
   </header>
 ));
+
+const handleProductClick = (id) => {
+  // Navigate to product detail page or show modal
+  console.log(`Clicked product with ID: ${id}`);
+};
 
 const ProductCard = React.memo(({ product }) => {
   const { priceChange, priceChangePercent } = calculatePriceChange(
@@ -225,11 +231,6 @@ const App = () => {
       ]
     }
   ]);
-
-  const handleProductClick = (id) => {
-    // Navigate to product detail page or show modal
-    console.log(`Clicked product with ID: ${id}`);
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
