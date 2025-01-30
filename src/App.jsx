@@ -1,20 +1,19 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { SearchIcon, PlusCircle, ArrowDownIcon, ArrowUpIcon } from 'lucide-react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { SearchIcon, PlusCircle, ArrowDownIcon, ArrowUpIcon, X } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/components/ui/toast-context';
+import { ToastProvider , useToast } from '@/components/ui/toast-context';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { formatCurrency, calculatePriceChange } from '@/lib/utils';
 import * as Yup from 'yup';
+import { Badge } from '@/components/ui/badge'; // For platform display
 
-
-const Header = React.memo(() => (
+const Header = React.memo(({ onTrackNewClick }) => (
   <header className="flex items-center justify-between p-4 border-b">
     <a href="/" className="text-2xl font-bold text-primary">PriceTrack</a>
-    <Button variant="outline" className="flex items-center gap-2">
+    <Button variant="outline" className="flex items-center gap-2" onClick={onTrackNewClick}>
       <PlusCircle className="w-4 h-4" />
       Track New
     </Button>
@@ -22,7 +21,6 @@ const Header = React.memo(() => (
 ));
 
 const handleProductClick = (id) => {
-  // Navigate to product detail page or show modal
   console.log(`Clicked product with ID: ${id}`);
 };
 
@@ -39,7 +37,19 @@ const ProductCard = React.memo(({ product }) => {
         <div className="flex justify-between items-start">
           <div>
             <h3 className="text-lg font-semibold">{product.name}</h3>
-            <p className="text-sm text-gray-500">{product.platform}</p>
+            <Badge variant="outline" className="text-sm">
+              {product.platform}
+            </Badge>
+            {product.url && (
+              <a
+                href={product.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-500 hover:underline block mt-2"
+              >
+                View Product
+              </a>
+            )}
           </div>
           <div className="text-right">
             <div className="text-xl font-bold">
@@ -51,7 +61,8 @@ const ProductCard = React.memo(({ product }) => {
               ) : (
                 <ArrowUpIcon className="w-4 h-4" />
               )}
-              {formatCurrency(Math.abs(priceChange))} ({priceChangePercent}%)
+              {formatCurrency(Math.abs(priceChange))} (
+              {typeof priceChangePercent === 'number' ? priceChangePercent.toFixed(2) : '0.00'}%)
             </div>
           </div>
         </div>
@@ -105,28 +116,45 @@ const ProductList = ({ searchQuery, products }) => {
   );
 };
 
-const TrackNewForm = () => {
+const TrackNewForm = ({ onClose }) => {
   const { toast } = useToast();
   const [formData, setFormData] = useState({
-    url: '',
-    platform: ''
+    product_name: '',
   });
 
   const validationSchema = Yup.object().shape({
-    url: Yup.string().url('Invalid URL').required('URL is required'),
-    platform: Yup.string().required('Platform is required')
+    product_name: Yup.string().required('Product name is required'),
   });
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     try {
       await validationSchema.validate(formData, { abortEarly: false });
-      // Add API call here
+      
+      const response = await fetch('http://localhost:8000/track-product', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          product_name: formData.product_name,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to track product');
+      
       toast({
         title: "Success",
         description: "Product tracking started successfully",
       });
-      setFormData({ url: '', platform: '' });
+      setFormData({ product_name: '' });
+      onClose(); // Close the modal after successful submission
+
+      // Refresh products list
+      const productsResponse = await fetch('http://localhost:8000/products');
+      const updatedProducts = await productsResponse.json();
+      setProducts(updatedProducts);
+
     } catch (error) {
       if (error instanceof Yup.ValidationError) {
         error.inner.forEach(err => {
@@ -144,97 +172,54 @@ const TrackNewForm = () => {
         });
       }
     }
-  }, [formData, toast, validationSchema]);
+  }, [formData, toast, validationSchema, onClose]);
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">Track New Product</h1>
-      <div className="space-y-4">
-        <div>
-          <label htmlFor="url" className="block text-sm font-medium mb-1">Product URL:</label>
-          <Input
-            id="url"
-            type="url"
-            value={formData.url}
-            onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
-            placeholder="Enter product URL"
-          />
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold">Track New Product</h1>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded">
+            <X className="w-6 h-6" />
+          </button>
         </div>
-        <div>
-          <label htmlFor="platform" className="block text-sm font-medium mb-1">Platform:</label>
-          <Select
-            value={formData.platform}
-            onValueChange={(value) => setFormData(prev => ({ ...prev, platform: value }))}
-          >
-            <SelectTrigger id="platform">
-              <SelectValue placeholder="Select a platform" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tokopedia">Tokopedia</SelectItem>
-              <SelectItem value="shopee">Shopee</SelectItem>
-              <SelectItem value="bukalapak">Bukalapak</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button type="submit" className="w-full">Start Tracking</Button>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="product_name" className="block text-sm font-medium mb-1">
+              Product Name:
+            </label>
+            <Input
+              id="product_name"
+              value={formData.product_name}
+              onChange={(e) => setFormData({ product_name: e.target.value })}
+              placeholder="Enter product name"
+            />
+          </div>
+          <Button type="submit" className="w-full">Start Tracking</Button>
+        </form>
       </div>
-    </form>
+    </div>
   );
 };
 
 const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [products, setProducts] = useState([
-    {
-      id: 1,
-      name: 'Smartphone X',
-      platform: 'Tokopedia',
-      currentPrice: 3500000,
-      priceChange: -200000,
-      priceChangePercent: 5.4,
-      priceHistory: [
-        { date: '2023-04-01', price: 3700000 },
-        { date: '2023-04-15', price: 3650000 },
-        { date: '2023-05-01', price: 3600000 },
-        { date: '2023-05-15', price: 3550000 },
-        { date: '2023-06-01', price: 3500000 }
-      ]
-    },
-    {
-      id: 2,
-      name: 'Laptop Y',
-      platform: 'Shopee',
-      currentPrice: 7640000,
-      priceChange: -350000,
-      priceChangePercent: 2.4,
-      priceHistory: [
-        { date: '2023-03-01', price: 7990000 },
-        { date: '2023-03-15', price: 7890000 },
-        { date: '2023-04-01', price: 7790000 },
-        { date: '2023-04-15', price: 7690000 },
-        { date: '2023-05-01', price: 7640000 }
-      ]
-    },
-    {
-      id: 3,
-      name: 'Sendal Jepit',
-      platform: 'Bukalapak',
-      currentPrice: 30000,
-      priceChange: 1000,
-      priceChangePercent: 0.1,
-      priceHistory: [
-        { date: '2023-02-01', price: 29000 },
-        { date: '2023-02-15', price: 29500 },
-        { date: '2023-03-01', price: 29750 },
-        { date: '2023-03-15', price: 30000 },
-        { date: '2023-04-01', price: 30000 }
-      ]
-    }
-  ]);
+  const [products, setProducts] = useState([]);
+  const [isTrackNewFormOpen, setIsTrackNewFormOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const response = await fetch('http://localhost:8000/products');
+      const data = await response.json();
+      setProducts(data);
+    };
+    fetchProducts();
+  }, []);
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-gray-50">
-      <Header />
+      <Header onTrackNewClick={() => setIsTrackNewFormOpen(true)} />
       <main className="container mx-auto p-4">
         <div className="mb-4">
           <div className="relative">
@@ -291,7 +276,12 @@ const App = () => {
       <footer className="text-center p-4 text-sm text-gray-500">
         © {new Date().getFullYear()} PriceTrack App
       </footer>
+
+      {isTrackNewFormOpen && (
+        <TrackNewForm onClose={() => setIsTrackNewFormOpen(false)} />
+      )}
     </div>
+    </ToastProvider>
   );
 };
 
