@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Form
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List
 import uvicorn
 from datetime import datetime
@@ -11,6 +12,14 @@ from scrapers.lazada_scraper import LazadaScraper
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # Your React app's origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class ProductStore:
     def __init__(self):
@@ -35,16 +44,13 @@ class ProductStore:
 
 store = ProductStore()
 
-"""class TrackProductRequest(BaseModel):
-    product_name: str """
-
 class TrackProductResponse(BaseModel):
     message: str
     product_ids: List[str]
     total_products: int
 
 @app.post("/track-product", response_model=TrackProductResponse)
-async def track_product(product_name: str):
+async def track_product(product_name: str = Form(...)):
     logger.info(f"Tracking product: {product_name}")
     
     # Initialize scrapers
@@ -94,7 +100,18 @@ async def track_product(product_name: str):
 
 @app.get("/products")
 async def get_products():
-    return store.get_products()
+    products = store.get_products()
+    return [
+        {
+            "id": product["id"],
+            "name": product["name"],
+            "platform": product["platform"],
+            "currentPrice": float(product["price"]),  # Ensure price is a number
+            "priceHistory": product["price_history"],
+            "url": product.get("url", ""),  # Include product URL
+        }
+        for product in products
+    ]
 
 @app.get("/products/{platform}")
 async def get_products_by_platform(platform: str):
